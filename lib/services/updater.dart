@@ -35,7 +35,7 @@ class Updater {
     return 0;
   }
 
-  static Future<_Release?> _latest() async {
+  static Future<Release?> fetchLatest() async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
       final req = await client.getUrl(
@@ -51,7 +51,7 @@ class Updater {
           (json['assets'] as List? ?? []).cast<Map<String, dynamic>>();
       final apk =
           assets.where((a) => (a['name'] as String? ?? '').endsWith('.apk'));
-      return _Release(
+      return Release(
         version: (json['tag_name'] as String? ?? '')
             .replaceFirst(RegExp('^[vV]'), ''),
         notes: (json['body'] as String? ?? '').trim(),
@@ -70,14 +70,15 @@ class Updater {
   /// Automático: como máximo una vez al día y en silencio si no hay nada.
   static Future<void> check(BuildContext context, {bool manual = false}) async {
     final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now().millisecondsSinceEpoch;
     if (!manual) {
       final last = prefs.getInt(_lastCheckKey) ?? 0;
-      final now = DateTime.now().millisecondsSinceEpoch;
       if (now - last < const Duration(hours: 20).inMilliseconds) return;
-      await prefs.setInt(_lastCheckKey, now);
     }
 
-    final rel = await _latest();
+    final rel = await fetchLatest();
+    // Solo cuenta como revisado si GitHub respondió (sin internet se reintenta).
+    if (rel != null) await prefs.setInt(_lastCheckKey, now);
     if (!context.mounted) return;
     if (rel == null || rel.version.isEmpty) {
       if (manual) showSnack(context, 'No se pudo revisar. ¿Hay internet?');
@@ -129,10 +130,10 @@ class Updater {
   }
 }
 
-class _Release {
+class Release {
   final String version;
   final String notes;
   final String url;
-  const _Release(
+  const Release(
       {required this.version, required this.notes, required this.url});
 }
